@@ -323,6 +323,7 @@
     box-shadow: 0 8px 30px rgba(0,0,0,0.6);
     flex-direction: column;
     overflow: hidden;
+    z-index: 65;
   }
   #panel-inventory.open { display: flex; }
   #panel-inventory .pi-head {
@@ -569,6 +570,13 @@
   #confirm-modal button:hover { border-color: #ffd870; }
 
   /* ==================== TURN 3: SKILLS / JOB CHANGE ==================== */
+  /* Base z-index for all panels — sit above mobile-layer (40-44) */
+  #panel-skills, #panel-shop, #panel-storage, #panel-quest, #panel-about,
+  #panel-inventory, #panel-dialog, #panel-status,
+  #panel-settings, #panel-craft, #panel-card, #panel-achievements, #panel-saves {
+    z-index: 65;
+  }
+
   #panel-skills {
     position: absolute;
     top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -1417,6 +1425,95 @@
     top: auto !important;
     transform: translate(-50%, 0) !important;
   }
+
+  /* === When any panel is open on mobile, hide bottom UI to prevent overlap === */
+  body.mobile.panel-open #hud-hotkeys { display: none !important; }
+  body.mobile.panel-open #vjoy { opacity: 0.25; pointer-events: none; }
+  body.mobile.panel-open #mobile-attack { opacity: 0.25; pointer-events: none; }
+  body.mobile.panel-open #mobile-menu-row { opacity: 0.5; }
+  body.mobile.panel-open #mobile-hamburger { opacity: 0.5; }
+
+  /* === Confirm modal mobile — fits narrow phones === */
+  body.mobile #confirm-modal .cm-box {
+    width: calc(100vw - 24px) !important;
+    max-width: 380px !important;
+    padding: 14px 18px !important;
+    font-size: 12px !important;
+  }
+  body.mobile #confirm-modal .cm-msg { font-size: 12px !important; }
+  body.mobile #confirm-modal button { padding: 8px 14px !important; font-size: 12px !important; }
+
+  /* === Job modal mobile — 2-col grid on narrow === */
+  @media (max-width: 700px) {
+    #job-modal .jm-box { padding: 14px 16px !important; max-width: calc(100vw - 16px) !important; }
+    #job-modal h2 { font-size: 16px !important; margin-bottom: 2px !important; }
+    #job-modal .jm-sub { font-size: 11px !important; margin-bottom: 12px !important; }
+    #job-modal .jm-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+    #job-modal .jc-icon { width: 44px !important; height: 44px !important; }
+    #job-modal .jc-name { font-size: 12px !important; }
+    #job-modal .jc-desc { font-size: 9px !important; line-height: 1.4 !important; }
+  }
+  /* Landscape phone — keep 3-col but tight */
+  @media (max-height: 500px) {
+    #job-modal .jm-box { padding: 10px 14px !important; }
+    #job-modal h2 { font-size: 14px !important; }
+    #job-modal .jc-icon { width: 36px !important; height: 36px !important; margin-bottom: 4px !important; }
+    #job-modal .jc-desc { font-size: 9px !important; }
+  }
+
+  /* === Dialog modal — ensure options stack well + smaller text === */
+  body.mobile #panel-dialog { max-height: 70dvh !important; }
+  body.mobile #panel-dialog .dlg-text { font-size: 12px !important; padding: 10px 14px !important; }
+  body.mobile #panel-dialog .dlg-options button { font-size: 12px !important; padding: 8px 12px !important; }
+  body.mobile #panel-dialog .dlg-name { font-size: 13px !important; }
+  body.mobile #panel-dialog .dlg-sub { font-size: 10px !important; }
+  body.mobile #panel-dialog .dlg-portrait { width: 40px !important; height: 40px !important; }
+  body.mobile #panel-dialog .dlg-portrait canvas { width: 36px !important; height: 36px !important; }
+
+  /* === Inventory grid: tighter spacing on small screens === */
+  body.mobile #panel-inventory .inv-grid { grid-template-columns: repeat(7, 38px) !important; gap: 3px !important; }
+  body.mobile #panel-inventory .pi-left { padding: 8px 10px !important; max-height: 45dvh !important; }
+  body.mobile #panel-inventory .pi-right { padding: 8px 10px !important; }
+  body.mobile #panel-inventory .inv-summary { font-size: 10px !important; margin-bottom: 4px !important; }
+  body.mobile #panel-inventory .inv-tab { padding: 3px 8px !important; font-size: 10px !important; }
+  body.mobile #panel-inventory .selected-detail { font-size: 10px !important; padding: 4px 6px !important; min-height: 38px !important; }
+  body.mobile #panel-inventory .inv-actions button { padding: 5px !important; font-size: 10px !important; }
+  body.mobile #panel-inventory .eq-slot { min-height: 32px !important; padding: 3px 5px !important; }
+  body.mobile #panel-inventory .eq-name { font-size: 10px !important; }
+
+  /* === Shop list mobile === */
+  body.mobile #panel-shop .sh-row { padding: 5px 6px !important; gap: 6px !important; }
+  body.mobile #panel-shop .sh-name { font-size: 11px !important; }
+  body.mobile #panel-shop .sh-name small { font-size: 9px !important; }
+  body.mobile #panel-shop .sh-price { font-size: 10px !important; min-width: 60px !important; }
+  body.mobile #panel-shop .sh-qty { width: 38px !important; font-size: 10px !important; }
+  body.mobile #panel-shop .sh-row button { padding: 3px 9px !important; font-size: 10px !important; }
+  body.mobile #panel-shop .sh-icon { width: 28px !important; height: 28px !important; }
+  body.mobile #panel-shop .sh-icon canvas { width: 26px !important; height: 26px !important; }
+
+  /* === Skill panel mobile === */
+  body.mobile #panel-skills .skill-row { padding: 4px 6px !important; gap: 5px !important; }
+  body.mobile #panel-skills .sk-icon { width: 32px !important; height: 32px !important; }
+  body.mobile #panel-skills .sk-icon canvas { width: 28px !important; height: 28px !important; }
+  body.mobile #panel-skills .sk-title { font-size: 11px !important; }
+  body.mobile #panel-skills .sk-desc { font-size: 9px !important; }
+  body.mobile #panel-skills .sk-meta { font-size: 9px !important; }
+  body.mobile #panel-skills .sk-actions button { padding: 2px 8px !important; font-size: 9px !important; }
+
+  /* === Quest panel mobile === */
+  body.mobile #panel-quest .q-row { padding: 6px 8px !important; }
+  body.mobile #panel-quest .q-name { font-size: 12px !important; }
+  body.mobile #panel-quest .q-desc { font-size: 10px !important; }
+  body.mobile #panel-quest .q-progress { font-size: 10px !important; }
+  body.mobile #panel-quest .q-reward { font-size: 9px !important; }
+  body.mobile #panel-quest .q-actions button { padding: 3px 10px !important; font-size: 10px !important; }
+  body.mobile #panel-quest .q-tab { padding: 4px 12px !important; font-size: 11px !important; }
+
+  /* === Settings rows compact on mobile === */
+  body.mobile #panel-settings .set-body { padding: 10px 14px !important; }
+  body.mobile #panel-settings .set-row { padding: 6px 0 !important; font-size: 11px !important; }
+  body.mobile #panel-settings .set-row input[type="range"] { width: 100px !important; }
+  body.mobile #panel-settings .set-actions button { padding: 6px !important; font-size: 11px !important; }
   body.mobile #panel-status h2 { font-size: 13px !important; margin-bottom: 6px !important; }
   body.mobile #panel-status .stat-row { padding: 3px 0 !important; font-size: 11px !important; }
   body.mobile #panel-status .stat-row button { width: 20px !important; height: 20px !important; font-size: 11px !important; }
@@ -8100,6 +8197,8 @@ function updateHUD() {
     refreshBuffBar();
     refreshQuestTracker();
     drawMinimap();
+    // Turn 12: toggle body.panel-open class so CSS hides bottom UI
+    document.body.classList.toggle('panel-open', typeof anyPanelOpen === 'function' && anyPanelOpen());
     if (typeof refreshActionButtons === 'function') refreshActionButtons();
     // FPS counter
     if (game.settings?.showFps) {
