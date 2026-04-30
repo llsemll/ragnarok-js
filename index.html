@@ -1471,8 +1471,7 @@
   body.mobile #panel-dialog .dlg-portrait canvas { width: 36px !important; height: 36px !important; }
 
   /* === Inventory grid: tighter spacing on small screens === */
-  body.mobile #panel-inventory .inv-grid { grid-template-columns: repeat(7, 38px) !important; gap: 3px !important; }
-  body.mobile #panel-inventory .pi-left { padding: 8px 10px !important; max-height: 45dvh !important; }
+  body.mobile #panel-inventory .pi-left { padding: 8px 10px !important; }
   body.mobile #panel-inventory .pi-right { padding: 8px 10px !important; }
   body.mobile #panel-inventory .inv-summary { font-size: 10px !important; margin-bottom: 4px !important; }
   body.mobile #panel-inventory .inv-tab { padding: 3px 8px !important; font-size: 10px !important; }
@@ -1522,11 +1521,27 @@
     from { transform: translate(-50%, 100%) !important; opacity: 0.4; }
     to   { transform: translate(-50%, 0) !important; opacity: 1; }
   }
-  body.mobile .pi-body { flex-direction: column !important; }
-  body.mobile .pi-left, body.mobile .pi-right { flex: none !important; border-right: none !important; border-bottom: 1px solid #2a3040; }
-  body.mobile .pi-left { max-height: 50vh; overflow-y: auto; }
-  body.mobile .stg-body { flex-direction: column !important; }
-  body.mobile .inv-grid, body.mobile .stg-grid { grid-template-columns: repeat(7, 36px) !important; }
+  body.mobile .pi-body {
+    flex-direction: column !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  body.mobile .pi-left, body.mobile .pi-right {
+    flex: 0 0 auto !important;
+    border-right: none !important;
+    border-bottom: 1px solid #2a3040;
+    overflow: visible !important;     /* let parent .pi-body handle scroll */
+    display: block !important;        /* not flex anymore — natural height */
+  }
+  body.mobile .stg-body { flex-direction: column !important; overflow-y: auto !important; }
+  body.mobile .inv-grid, body.mobile .stg-grid {
+    grid-template-columns: repeat(7, 38px) !important;
+    gap: 3px !important;
+    min-height: 180px !important;       /* ensure visible even if items few */
+    max-height: 220px !important;       /* cap so detail + actions fit */
+    overflow-y: auto !important;
+    flex: none !important;
+  }
 
   /* Hide desktop-only elements on mobile */
   body.mobile #panel-help { display: none; }
