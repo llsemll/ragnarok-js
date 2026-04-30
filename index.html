@@ -180,6 +180,8 @@
     position: absolute;
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     width: 360px;
+    max-height: 85vh;
+    overflow-y: auto;
     background: linear-gradient(180deg, rgba(25,30,42,0.97), rgba(15,18,28,0.97));
     border: 2px solid #4a5060;
     border-radius: 6px;
@@ -187,6 +189,7 @@
     pointer-events: auto;
     display: none;
     box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    -webkit-overflow-scrolling: touch;
   }
   #panel-status h2 {
     font-size: 14px; color: #ffd870;
@@ -1572,12 +1575,28 @@
   /* Fullscreen toggle on title */
   #title button.mini { font-size: 11px; padding: 6px 0; width: 180px; }
 
-  /* Larger title on mobile (was 56) */
+  /* Compact title on small screens — fit landscape phone */
   @media (max-width: 700px) {
-    #title h1 { font-size: 40px; }
-    #title .menu button { width: 80vw; max-width: 280px; padding: 14px 0; font-size: 15px; }
-    #title .footer { font-size: 9px; padding: 0 12px; text-align: center; }
+    #title h1 { font-size: 36px; margin-bottom: 4px; letter-spacing: 2px; }
+    #title .subtitle { font-size: 11px; margin-bottom: 16px; }
+    #title .menu button {
+      width: 70vw; max-width: 280px;
+      padding: 9px 0; font-size: 13px;
+      margin: 4px auto;
+    }
+    #title .menu button.mini { padding: 6px 0; font-size: 11px; width: 60vw; max-width: 240px; }
+    #title .footer { font-size: 9px; padding: 0 12px; bottom: 6px; text-align: center; }
   }
+  /* Even tighter for landscape phones (low height) */
+  @media (max-height: 500px) {
+    #title { padding: 4px; overflow-y: auto; }
+    #title h1 { font-size: 26px !important; margin-bottom: 0 !important; letter-spacing: 1px; }
+    #title .subtitle { font-size: 10px !important; margin-bottom: 8px !important; }
+    #title .menu button { padding: 6px 0 !important; font-size: 12px !important; margin: 2px auto !important; }
+    #title .menu button.mini { padding: 4px 0 !important; font-size: 10px !important; }
+    #title .footer { font-size: 8px !important; bottom: 2px !important; padding: 0 8px; }
+  }
+  body.mobile #title { overflow-y: auto; padding-top: 12px; padding-bottom: 12px; justify-content: flex-start; }
 
   /* Landscape orientation hint */
   #orientation-hint {
