@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Ragnarok.JS">
@@ -1388,8 +1391,8 @@
   body.mobile #panel-saves,
   body.mobile #panel-dialog {
     width: calc(100vw - 16px) !important;
-    max-width: 720px !important;
-    max-height: 88dvh !important;
+    max-width: 640px !important;
+    max-height: 78dvh !important;
     height: auto !important;
     top: auto !important;
     left: 50% !important;
@@ -1397,7 +1400,27 @@
     transform: translate(-50%, 0) !important;
     border-radius: 12px 12px 6px 6px !important;
     animation: slideUp 0.22s ease-out;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
   }
+  /* Status panel on mobile — narrower, sits center-bottom */
+  body.mobile #panel-status {
+    width: min(94vw, 420px) !important;
+    max-width: 420px !important;
+    max-height: 70vh !important;     /* fallback for old Safari */
+    max-height: 70dvh !important;
+    padding: 10px 14px !important;
+  }
+  /* Make status panel float ABOVE the HUD on mobile, not center-screen */
+  body.mobile #panel-status {
+    bottom: 12px !important;
+    top: auto !important;
+    transform: translate(-50%, 0) !important;
+  }
+  body.mobile #panel-status h2 { font-size: 13px !important; margin-bottom: 6px !important; }
+  body.mobile #panel-status .stat-row { padding: 3px 0 !important; font-size: 11px !important; }
+  body.mobile #panel-status .stat-row button { width: 20px !important; height: 20px !important; font-size: 11px !important; }
+  body.mobile #panel-status .stat-summary { font-size: 10px !important; padding-top: 6px !important; margin-top: 6px !important; }
   @keyframes slideUp {
     from { transform: translate(-50%, 100%) !important; opacity: 0.4; }
     to   { transform: translate(-50%, 0) !important; opacity: 1; }
