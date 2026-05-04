@@ -233,14 +233,25 @@ function genMap(seed, theme) {
     }
   }
   // dirt path running N-S (only for grass/sand fields)
+  // Bug fix: previously this only overwrote walkable base tiles, so rock clusters
+  // placed earlier could break the corridor entirely. Force-clear path tiles so
+  // the N-S corridor is guaranteed walkable regardless of theme/rock density.
   if (theme !== 'dungeon' && theme !== 'haunted' && theme !== 'tower') {
     let px = TCX;
     for (let y = 2; y < MAP_H - 2; y++) {
       if (rng() < 0.35) px += rng() < 0.5 ? -1 : 1;
       px = Math.max(4, Math.min(MAP_W - 5, px));
       for (let dx = -1; dx <= 1; dx++) {
-        const t = tiles[y][px + dx];
-        if (t === T_GRASS || t === T_GRASS2 || t === T_FLOWER || t === T_SAND || t === T_SAND2) tiles[y][px + dx] = T_DIRT;
+        tiles[y][px + dx] = T_DIRT;
+      }
+    }
+    // Add E-W cross corridor at mid-map (clears any pocket trapping the player)
+    let py = TCY;
+    for (let x = 2; x < MAP_W - 2; x++) {
+      if (rng() < 0.30) py += rng() < 0.5 ? -1 : 1;
+      py = Math.max(4, Math.min(MAP_H - 5, py));
+      for (let dy = -1; dy <= 1; dy++) {
+        tiles[py + dy][x] = T_DIRT;
       }
     }
   }
@@ -425,7 +436,14 @@ function makePlayer(name) {
     lastLoginDay: null,
     loginStreak: 0,
     costumes: {},        // { slot: costumeId } — visual overrides
+    // === Wave B (Prestige) — flags only; EP/nodes live in localStorage global ===
+    _lv99Awarded: false,
   };
+  // Wave B: bonus stat points from prestige capstone "ตัวเอก"
+  if (typeof getPrestigeBonuses === 'function') {
+    const pb = getPrestigeBonuses();
+    if (pb.statPointsAdd) p.statPoints += pb.statPointsAdd;
+  }
   recalcStats(p);
   p.hp = p.maxHp; p.sp = p.maxSp;
   return p;
@@ -617,6 +635,11 @@ const MOB_TYPES = {
     baseExp: 50000, jobExp: 18000,
     zeny:[3000, 8000],
     isBoss: true,
+    phases: [
+      { atHpPct: 0.70, effect:'enrage',         msg:'ENRAGED!',       duration: 8000, atkBoost: 1.3 },
+      { atHpPct: 0.40, effect:'aoe_telegraph',  msg:'GROUND SLAM!',   radius: 100, damage: 320, windup: 1500 },
+      { atHpPct: 0.15, effect:'spawn_minions',  msg:'SUMMONS!',       count: 2, minionType:'skeleton' },
+    ],
     drops: [
       { id:'dark_lord_card', chance:0.4 },
       { id:'bloody_axe',     chance:0.5 },
@@ -705,6 +728,10 @@ const MOB_TYPES = {
     baseExp: 12000, jobExp: 4500,
     zeny:[500, 1500],
     isBoss: true,
+    phases: [
+      { atHpPct: 0.70, effect:'enrage',        msg:'ROAR!',         duration: 7000, atkBoost: 1.25 },
+      { atHpPct: 0.30, effect:'aoe_telegraph', msg:'POUNCE!',       radius: 88,  damage: 200, windup: 1300 },
+    ],
     drops: [
       { id:'tiger_card',     chance: 1.0 },     // garanteed because rare class
       { id:'stiletto',       chance: 0.30 },
@@ -1552,6 +1579,7 @@ function calcWeight(p) {
 function maxWeight(p) {
   let bonus = 0;
   if (p.skills?.pushcart) bonus += 100 * p.skills.pushcart;
+  if (typeof getPrestigeBonuses === 'function') bonus += getPrestigeBonuses().weightAdd || 0;
   return 200 + p.str * 30 + bonus;
 }
 function addItem(p, id, count, opts) {
@@ -1835,6 +1863,10 @@ function makeMonster(typeId, tx, ty) {
     deathT: 0,
     _ngLv: ngLv,
   };
+  if (t.phases && t.phases.length) {
+    m.phaseIndex = 0;
+    m.phaseEffects = [];
+  }
   return m;
 }
 
@@ -1900,6 +1932,17 @@ function recalcStats(p) {
     speedMul *= MOUNTS[p.mount].speed;
   }
   p.speed = 110 * speedMul;
+
+  // === Wave B: prestige stat % multipliers (apply after equip + buffs) ===
+  if (typeof getPrestigeBonuses === 'function') {
+    const _pb = getPrestigeBonuses();
+    if (_pb.strPct) totalStr = Math.floor(totalStr * (1 + _pb.strPct / 100));
+    if (_pb.agiPct) totalAgi = Math.floor(totalAgi * (1 + _pb.agiPct / 100));
+    if (_pb.vitPct) totalVit = Math.floor(totalVit * (1 + _pb.vitPct / 100));
+    if (_pb.intPct) totalInt = Math.floor(totalInt * (1 + _pb.intPct / 100));
+    if (_pb.dexPct) totalDex = Math.floor(totalDex * (1 + _pb.dexPct / 100));
+    if (_pb.lukPct) totalLuk = Math.floor(totalLuk * (1 + _pb.lukPct / 100));
+  }
 
   p.maxHp = Math.floor((job.hpBase + job.hpPerLv * (p.baseLv - 1)) * (1 + totalVit / 100)) + eqBonus.maxHp;
   p.maxSp = Math.floor((job.spBase + job.spPerLv * (p.baseLv - 1)) * (1 + totalInt / 100)) + eqBonus.maxSp + passiveBonus.maxSp;
@@ -2027,6 +2070,10 @@ function attackEnemy(attacker, defender) {
     }
   } else {
     baseAtk = MOB_TYPES[attacker.typeId].atk;
+    // Wave A: enraged bosses hit harder
+    if (attacker.phaseEffects && attacker.phaseEffects.length) {
+      baseAtk = Math.floor(baseAtk * getBossEnrageMult(attacker));
+    }
     defVal = defender.def;
   }
   const isCrit = attacker.kind === 'player' && Math.random() * 100 < attacker.crit;
@@ -2095,6 +2142,8 @@ function gainExp(player, baseAmt, jobAmt) {
     if (game.settings?.autoBackupEvery10 !== false && player.baseLv > 0 && player.baseLv % 10 === 0) {
       maybePromptBackup(player.baseLv);
     }
+    // Wave B: prestige EP — first time reaching Lv 99 per character
+    if (player.baseLv >= 99 && !player._lv99Awarded) checkLv99PrestigeAward(player);
   }
   const job = JOBS[player.job];
   while (player.jobLv < job.maxJobLv && player.jobExp >= JOB_EXP_TABLE[player.jobLv]) {
@@ -2122,15 +2171,21 @@ function onMonsterDie(mob) {
   log(`สังหาร ${t.name}`, 'die');
   gainExp(game.player, t.baseExp, t.jobExp);
   // === Drops as ground loot (Turn 12) ===
+  // Wave B: prestige drop / zeny multipliers
+  const _pb2 = (typeof getPrestigeBonuses === 'function') ? getPrestigeBonuses() : null;
+  const _dropMult = 1 + ((_pb2?.dropPct || 0) / 100);
+  const _zenyMult = 1 + ((_pb2?.zenyPct || 0) / 100);
   let zenyDrop = 0;
   if (t.zeny) {
     zenyDrop = t.zeny[0] + Math.floor(Math.random() * (t.zeny[1] - t.zeny[0] + 1));
     // NG+ scaling on rewards
     if (game.player.ngPlusLevel) zenyDrop = Math.floor(zenyDrop * (1 + 0.5 * game.player.ngPlusLevel));
+    if (_zenyMult !== 1) zenyDrop = Math.floor(zenyDrop * _zenyMult);
   }
   const itemDrops = [];
   for (const d of t.drops) {
-    if (Math.random() < d.chance) {
+    const chance = _dropMult !== 1 ? Math.min(1, d.chance * _dropMult) : d.chance;
+    if (Math.random() < chance) {
       const def = ITEMS[d.id];
       if (def) itemDrops.push({ id: d.id, count: 1 });
     }
@@ -2194,6 +2249,8 @@ function updateMonster(mob, dt) {
   mob.atkCdMs = Math.max(0, mob.atkCdMs - dt);
   mob.hitFlashMs = Math.max(0, mob.hitFlashMs - dt);
   mob.bounceT += dt / 1000 * 4;
+  // Wave A: boss phase mechanics (HP threshold trigger + tick active effects)
+  if (t.phases && t.phases.length) updateBossPhases(mob, dt);
   // Frozen mobs can't move or attack
   if (mob.frozenMs && mob.frozenMs > 0) {
     return;
@@ -2304,6 +2361,10 @@ function respawnMonster(mob) {
   mob.dead = false;
   mob.aiState = 'idle';
   mob.target = null;
+  if (t.phases && t.phases.length) {
+    mob.phaseIndex = 0;
+    mob.phaseEffects = [];
+  }
 }
 
 function facingTowards(e, target) {
@@ -2351,7 +2412,13 @@ function updatePlayer(dt) {
   game.regenT = (game.regenT || 0) + dt;
   if (game.regenT >= 1500) {
     game.regenT = 0;
-    if (p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + Math.max(1, Math.floor(p.maxHp * 0.02)));
+    let hpRegen = Math.max(1, Math.floor(p.maxHp * 0.02));
+    // Wave B: prestige "ฟื้นฟู" — flat HP regen bonus per second (1.5s tick)
+    if (typeof getPrestigeBonuses === 'function') {
+      const _hpAdd = getPrestigeBonuses().hpRegenAdd || 0;
+      if (_hpAdd > 0) hpRegen += Math.ceil(_hpAdd * 1.5);
+    }
+    if (p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + hpRegen);
     if (p.sp < p.maxSp) p.sp = Math.min(p.maxSp, p.sp + Math.max(1, Math.floor(p.maxSp * 0.04)));
   }
 
@@ -2549,6 +2616,7 @@ function setupInput() {
     if (k === 'j') { e.preventDefault(); togglePanelById('panel-achievements', openAchPanel); return; }
     if (k === 'y') { e.preventDefault(); togglePanelById('panel-about', openBestiary); return; }
     if (k === 'l') { e.preventDefault(); togglePanelById('panel-about', openChangelog); return; }
+    if (k === 'p') { e.preventDefault(); togglePrestigePanel(); return; }
     if (k === 'v') { // Tame nearest low-HP mob
       e.preventDefault();
       if (game?.player) {
@@ -2610,8 +2678,8 @@ function setupInput() {
       if (qp.classList.contains('open')) { toggleQuestPanel(false); return; }
       const ab = document.getElementById('panel-about');
       if (ab.classList.contains('open')) { ab.classList.remove('open'); return; }
-      // Turn 7 panels
-      for (const pid of ['panel-settings','panel-craft','panel-card','panel-achievements','panel-saves']) {
+      // Turn 7 panels + Wave B prestige
+      for (const pid of ['panel-settings','panel-craft','panel-card','panel-achievements','panel-saves','panel-prestige']) {
         const el = document.getElementById(pid);
         if (el && el.classList.contains('open')) { el.classList.remove('open'); return; }
       }
@@ -2732,6 +2800,9 @@ function setupInput() {
   document.getElementById('stg-close').addEventListener('click', closeStorage);
   document.getElementById('q-close').addEventListener('click', () => toggleQuestPanel(false));
   document.getElementById('about-close').addEventListener('click', () => document.getElementById('panel-about').classList.remove('open'));
+  // Wave B: prestige panel close
+  const _prClose = document.getElementById('prestige-close');
+  if (_prClose) _prClose.addEventListener('click', () => document.getElementById('panel-prestige').classList.remove('open'));
 
   // Shop tabs
   document.querySelectorAll('#panel-shop .sh-tab').forEach(t => {
@@ -3261,6 +3332,22 @@ function drawMonster(m) {
   const s = worldToScreen(m.px, m.py);
   const t = MOB_TYPES[m.typeId];
   drawShadow(s.x, s.y + 8, 8);
+  // Wave A: red aura when boss is enraged
+  if (m.phaseEffects && m.phaseEffects.length) {
+    let enraged = false;
+    for (const e of m.phaseEffects) if (e.effect === 'enrage') { enraged = true; break; }
+    if (enraged) {
+      ctx.save();
+      const pulse = 0.35 + 0.15 * Math.sin(performance.now() / 120);
+      const r = 22 + 4 * Math.sin(performance.now() / 90);
+      const grad = ctx.createRadialGradient(s.x, s.y - 2, 4, s.x, s.y - 2, r);
+      grad.addColorStop(0, `rgba(255,40,40,${pulse})`);
+      grad.addColorStop(1, 'rgba(255,40,40,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(s.x, s.y - 2, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
   ctx.save();
   if (m.hitFlashMs > 0) ctx.filter = 'brightness(1.8) saturate(2)';
 
@@ -3648,7 +3735,13 @@ function executeSkill(caster, skillId, target, lv) {
   }
   caster.sp = Math.max(0, caster.sp - skv(sk, 'sp', lv));
   caster.skillCd = caster.skillCd || {};
-  caster.skillCd[skillId] = skv(sk, 'cd', lv);
+  let _cd = skv(sk, 'cd', lv);
+  // Wave B: prestige "จิตเย็น" reduces cooldown
+  if (caster.kind === 'player' && typeof getPrestigeBonuses === 'function') {
+    const _cdReduce = getPrestigeBonuses().cdReducePct || 0;
+    if (_cdReduce > 0) _cd = Math.floor(_cd * (1 - _cdReduce / 100));
+  }
+  caster.skillCd[skillId] = _cd;
   switch (sk.type) {
     case 'self_heal': {
       const h = skv(sk, 'power', lv);
@@ -5090,8 +5183,197 @@ function refreshPurse() {
   wEl.classList.toggle('over', w > wMax * 0.5);
 }
 
+// ============================ WAVE B: PRESTIGE TREE ============================
+// META progression: Eternal Points (EP) survive char delete / NG+ / save wipe.
+// Storage: localStorage['rj_prestige_global'] = { ep, nodes:{id:1}, lastDailyEp, ngPlusEpAt, towerEpAt }
+const PRESTIGE_GLOBAL_KEY = 'rj_prestige_global';
+const PRESTIGE_NODES = {
+  // Stat % nodes (3 ranks each — costs 1/2/3, total +5% per stat)
+  str_1: { name:'พลัง I',     cost:1, effect:{strPct:1}, desc:'+1% STR' },
+  str_2: { name:'พลัง II',    cost:2, effect:{strPct:2}, desc:'+2% STR (รวม +3%)', requires:['str_1'] },
+  str_3: { name:'พลัง III',   cost:3, effect:{strPct:2}, desc:'+2% STR (รวม +5%)', requires:['str_2'] },
+  agi_1: { name:'ว่องไว I',   cost:1, effect:{agiPct:1}, desc:'+1% AGI' },
+  agi_2: { name:'ว่องไว II',  cost:2, effect:{agiPct:2}, desc:'+2% AGI', requires:['agi_1'] },
+  agi_3: { name:'ว่องไว III', cost:3, effect:{agiPct:2}, desc:'+2% AGI', requires:['agi_2'] },
+  vit_1: { name:'ทรหด I',     cost:1, effect:{vitPct:1}, desc:'+1% VIT' },
+  vit_2: { name:'ทรหด II',    cost:2, effect:{vitPct:2}, desc:'+2% VIT', requires:['vit_1'] },
+  vit_3: { name:'ทรหด III',   cost:3, effect:{vitPct:2}, desc:'+2% VIT', requires:['vit_2'] },
+  int_1: { name:'ปัญญา I',    cost:1, effect:{intPct:1}, desc:'+1% INT' },
+  int_2: { name:'ปัญญา II',   cost:2, effect:{intPct:2}, desc:'+2% INT', requires:['int_1'] },
+  int_3: { name:'ปัญญา III',  cost:3, effect:{intPct:2}, desc:'+2% INT', requires:['int_2'] },
+  dex_1: { name:'แม่นยำ I',   cost:1, effect:{dexPct:1}, desc:'+1% DEX' },
+  dex_2: { name:'แม่นยำ II',  cost:2, effect:{dexPct:2}, desc:'+2% DEX', requires:['dex_1'] },
+  dex_3: { name:'แม่นยำ III', cost:3, effect:{dexPct:2}, desc:'+2% DEX', requires:['dex_2'] },
+  luk_1: { name:'โชคดี I',    cost:1, effect:{lukPct:1}, desc:'+1% LUK' },
+  luk_2: { name:'โชคดี II',   cost:2, effect:{lukPct:2}, desc:'+2% LUK', requires:['luk_1'] },
+  luk_3: { name:'โชคดี III',  cost:3, effect:{lukPct:2}, desc:'+2% LUK', requires:['luk_2'] },
+  // Drop / Zeny nodes
+  drop_1:  { name:'โชคนักล่า I',  cost:2, effect:{dropPct:5},  desc:'+5% drop rate' },
+  drop_2:  { name:'โชคนักล่า II', cost:3, effect:{dropPct:10}, desc:'+10% drop (รวม 15%)', requires:['drop_1'] },
+  zeny_1:  { name:'นักธุรกิจ',    cost:2, effect:{zenyPct:10}, desc:'+10% zeny drop' },
+  zeny_2:  { name:'มหาเศรษฐี',    cost:3, effect:{zenyPct:15}, desc:'+15% zeny (รวม 25%)', requires:['zeny_1'] },
+  // QoL nodes
+  start_zeny:  { name:'มรดก',       cost:5, effect:{startZeny:5000}, desc:'เริ่มเกมใหม่ +5,000z' },
+  cd_reduce:   { name:'จิตเย็น',    cost:4, effect:{cdReducePct:5}, desc:'Skill cooldown -5%' },
+  weight_up:   { name:'หลังกว้าง',  cost:2, effect:{weightAdd:200}, desc:'น้ำหนักสูงสุด +200' },
+  hp_regen:    { name:'ฟื้นฟู',     cost:3, effect:{hpRegenAdd:1}, desc:'HP regen +1/วินาที' },
+  loot_radius: { name:'แม่เหล็ก',  cost:3, effect:{lootRadiusAdd:1}, desc:'auto-loot รัศมี +1 tile' },
+  // Capstones
+  bonus_stat: { name:'★ ตัวเอก', cost:8,  effect:{statPointsAdd:30}, desc:'+30 stat points ทุก char ใหม่', requires:['str_3','vit_3'] },
+  legend:     { name:'★★ ตำนาน',  cost:10, effect:{allStatsPct:5},   desc:'+5% ทุกสถิติ',                  requires:['bonus_stat'] },
+};
+
+function loadPrestigeGlobal() {
+  try {
+    const raw = localStorage.getItem(PRESTIGE_GLOBAL_KEY);
+    if (!raw) return { ep:0, nodes:{}, lastDailyEp:null, ngPlusEpAt:0, towerEpAt:0 };
+    const obj = JSON.parse(raw);
+    if (typeof obj.ep !== 'number') obj.ep = 0;
+    if (!obj.nodes) obj.nodes = {};
+    return obj;
+  } catch (e) { return { ep:0, nodes:{}, lastDailyEp:null, ngPlusEpAt:0, towerEpAt:0 }; }
+}
+function savePrestigeGlobal(g) {
+  try { localStorage.setItem(PRESTIGE_GLOBAL_KEY, JSON.stringify(g)); } catch (e) { console.warn(e); }
+}
+function getPrestigeBonuses() {
+  const g = loadPrestigeGlobal();
+  const b = { strPct:0, agiPct:0, vitPct:0, intPct:0, dexPct:0, lukPct:0,
+              dropPct:0, zenyPct:0, startZeny:0, cdReducePct:0,
+              weightAdd:0, hpRegenAdd:0, lootRadiusAdd:0, statPointsAdd:0, allStatsPct:0 };
+  for (const id in g.nodes) {
+    const node = PRESTIGE_NODES[id]; if (!node) continue;
+    for (const k in node.effect) b[k] = (b[k] || 0) + node.effect[k];
+  }
+  // allStatsPct adds to every stat %
+  if (b.allStatsPct) {
+    b.strPct += b.allStatsPct; b.agiPct += b.allStatsPct; b.vitPct += b.allStatsPct;
+    b.intPct += b.allStatsPct; b.dexPct += b.allStatsPct; b.lukPct += b.allStatsPct;
+  }
+  return b;
+}
+function grantPrestigeEp(amount, reason) {
+  const g = loadPrestigeGlobal();
+  g.ep += amount;
+  savePrestigeGlobal(g);
+  if (typeof log === 'function') log(`★ +${amount} Eternal Point — ${reason}`, 'lvl');
+  if (typeof showToast === 'function') showToast(`+${amount} EP`);
+  if (typeof sfx === 'function') sfx('levelup');
+  if (game?.player) {
+    spawnParticleBurst(game.player.px, game.player.py, '#a060ff', 30);
+  }
+}
+function canUnlockPrestige(id) {
+  const g = loadPrestigeGlobal();
+  const node = PRESTIGE_NODES[id]; if (!node) return false;
+  if (g.nodes[id]) return false; // already unlocked
+  if (g.ep < node.cost) return false;
+  if (node.requires) {
+    for (const r of node.requires) if (!g.nodes[r]) return false;
+  }
+  return true;
+}
+function unlockPrestigeNode(id) {
+  const node = PRESTIGE_NODES[id]; if (!node) return false;
+  if (!canUnlockPrestige(id)) { sfx('miss'); return false; }
+  const g = loadPrestigeGlobal();
+  g.ep -= node.cost;
+  g.nodes[id] = 1;
+  savePrestigeGlobal(g);
+  log(`★ ปลดล็อค ${node.name}`, 'lvl');
+  sfx('expget');
+  spawnParticleBurst(game.player.px, game.player.py, '#a060ff', 22);
+  if (game?.player) recalcStats(game.player);
+  buildPrestigePanel();
+  return true;
+}
+function togglePrestigePanel() {
+  togglePanelById('panel-prestige', () => {
+    document.getElementById('panel-prestige').classList.add('open');
+    buildPrestigePanel();
+  });
+}
+function buildPrestigePanel() {
+  const el = document.getElementById('panel-prestige');
+  if (!el) return;
+  const body = el.querySelector('.pr-body');
+  if (!body) return;
+  const g = loadPrestigeGlobal();
+  let html = '';
+  // Header
+  html += `<div class="pr-summary">`;
+  html += `<div><span class="pr-ep-label">Eternal Points</span><span class="pr-ep-val">${g.ep}</span></div>`;
+  html += `<div class="pr-hint">EP คงอยู่ตลอดทุก save · ทุก character · ทุก NG+</div>`;
+  html += `<div class="pr-hint">หาเพิ่มได้: ถึง Lv 99 (+3) · เริ่ม NG+ (+5) · Tower ทุก 10 floors (+1) · Daily login (+1)</div>`;
+  html += `</div>`;
+  // Group sections
+  const groups = [
+    { title:'⚡ Stat % (1+2+3 ranks)', ids:['str_1','str_2','str_3','agi_1','agi_2','agi_3','vit_1','vit_2','vit_3','int_1','int_2','int_3','dex_1','dex_2','dex_3','luk_1','luk_2','luk_3'] },
+    { title:'💎 Loot & Zeny',          ids:['drop_1','drop_2','zeny_1','zeny_2'] },
+    { title:'🎒 Quality of Life',      ids:['start_zeny','cd_reduce','weight_up','hp_regen','loot_radius'] },
+    { title:'★ Capstones',             ids:['bonus_stat','legend'] },
+  ];
+  for (const grp of groups) {
+    html += `<div class="pr-group-title">${grp.title}</div><div class="pr-tree">`;
+    for (const id of grp.ids) {
+      const node = PRESTIGE_NODES[id]; if (!node) continue;
+      const owned = !!g.nodes[id];
+      const can = canUnlockPrestige(id);
+      const cls = owned ? 'maxed' : (can ? 'unlocked' : 'locked');
+      const reqText = node.requires ? `<div class="pr-req">ต้อง: ${node.requires.map(r => PRESTIGE_NODES[r]?.name || r).join(', ')}</div>` : '';
+      html += `<div class="pr-node ${cls}" data-id="${id}">`;
+      html += `<div class="pr-name">${node.name}</div>`;
+      html += `<div class="pr-desc">${node.desc}</div>`;
+      html += reqText;
+      html += `<div class="pr-cost">${owned ? '✓ ปลดล็อคแล้ว' : (node.cost + ' EP')}</div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+  body.innerHTML = html;
+  // Bind clicks
+  body.querySelectorAll('.pr-node').forEach(n => {
+    n.addEventListener('click', () => {
+      const id = n.getAttribute('data-id');
+      unlockPrestigeNode(id);
+    });
+  });
+}
+function checkLv99PrestigeAward(p) {
+  if (!p || p.baseLv < 99 || p._lv99Awarded) return;
+  p._lv99Awarded = true;
+  grantPrestigeEp(3, 'ถึง Lv 99 ครั้งแรก');
+}
+function checkDailyPrestigeAward() {
+  const g = loadPrestigeGlobal();
+  const today = (new Date()).toDateString();
+  if (g.lastDailyEp === today) return;
+  g.lastDailyEp = today;
+  savePrestigeGlobal(g);
+  grantPrestigeEp(1, 'เข้าเล่นวันแรกของวัน');
+}
+
 // ============================ CHANGELOG (newest first) ============================
 const CHANGELOG = [
+  { version:'v0.15', date:'2026-05-04', title:'Wave B — Prestige Tree (Eternal Points)',
+    items:[
+      '👑 Prestige Tree — meta-progression ที่ค้างถาวรข้ามทุก save / NG+ / character delete',
+      '💎 Eternal Points (EP) — สะสมจาก Lv99 (+3) · NG+ (+5) · Tower ทุก 10 floors (+1) · Daily login (+1)',
+      '🌳 30+ nodes: stat% ทั้ง 6 stat × 3 ranks + drop/zeny + QoL (CD-, weight+, regen, start zeny, loot radius) + capstones',
+      'ปลดล็อค "ตำนาน" (capstone) → +5% ทุกสถิติทั้งหมดถาวร',
+      'กดปุ่ม P เปิด/ปิด panel · click node ที่มี EP พอ → unlock',
+    ]
+  },
+  { version:'v0.14', date:'2026-05-04', title:'Wave A — Boss Phases & Mechanics',
+    items:[
+      '⚔ Boss phases — เหลือ HP 70% / 40% / 15% trigger phase ใหม่',
+      '🔥 Enrage — boss โกรธ ATK ×1.25-1.30 (7-8 วิ, มี aura สีแดงเปล่งแสง)',
+      '💥 AOE Slam — telegraph วงพื้น 1.3-1.5 วิ (หลบทัน, dmg แรง)',
+      '👥 Summon — Dark Lord เรียก minion 2 ตัวมาช่วยเมื่อ HP ต่ำ',
+      '📢 Banner ขนาดใหญ่กลางจอเตือนทุก phase + screen shake + sfx',
+      'Eddga: 2 phases (ROAR + POUNCE) · Dark Lord: 3 phases (ENRAGED + GROUND SLAM + SUMMONS)',
+    ]
+  },
   { version:'v0.13', date:'2026-05-04', title:'Turn 13 Group A — Quality of Life',
     items:[
       '🩸 HP bar mob เห็นตลอดเวลา (toggle ได้ใน Settings)',
@@ -5310,7 +5592,7 @@ function openChangelog() {
 function anyPanelOpen() {
   const ids = ['panel-inventory','panel-skills','panel-shop','panel-storage','panel-quest',
                'panel-about','panel-settings','panel-craft','panel-card','panel-achievements',
-               'panel-saves','panel-dialog'];
+               'panel-saves','panel-dialog','panel-prestige'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (el && el.classList.contains('open')) return true;
@@ -5322,7 +5604,7 @@ function anyPanelOpen() {
 function closeAllPanels() {
   const ids = ['panel-inventory','panel-skills','panel-shop','panel-storage','panel-quest',
                'panel-about','panel-settings','panel-craft','panel-card','panel-achievements',
-               'panel-saves','panel-dialog'];
+               'panel-saves','panel-dialog','panel-prestige'];
   for (const id of ids) {
     const el = document.getElementById(id);
     if (el) el.classList.remove('open');
@@ -6653,6 +6935,9 @@ function newGame(loaded) {
   } else {
     // === Starter pack ===
     player.zeny = 100;
+    // Wave B: prestige "มรดก" capstone — start with bonus zeny
+    const _pb = (typeof getPrestigeBonuses === 'function') ? getPrestigeBonuses() : null;
+    if (_pb?.startZeny) player.zeny += _pb.startZeny;
     player.equipment.weapon = { id: 'novice_knife', count: 1, refine: 0, broken: false };
     player.equipment.armor  = { id: 'novice_clothes', count: 1, refine: 0, broken: false };
     player.equipment.helm   = { id: 'novice_hat', count: 1, refine: 0, broken: false };
@@ -7102,7 +7387,8 @@ function updateGroundLoot(dt) {
   const s = game.settings || {};
   const autoLoot = s.autoLootEnabled === true;
   const autoDelay = s.autoLootDelayMs ?? 3000;
-  const autoRadiusPx = (s.autoLootRadiusTiles ?? 3) * TILE;
+  const _lootRadAdd = (typeof getPrestigeBonuses === 'function') ? (getPrestigeBonuses().lootRadiusAdd || 0) : 0;
+  const autoRadiusPx = ((s.autoLootRadiusTiles ?? 3) + _lootRadAdd) * TILE;
   const autoR2 = autoRadiusPx * autoRadiusPx;
   for (const loot of game.groundLoot) {
     loot.t += dt;
@@ -7304,6 +7590,99 @@ function drawTelegraphs() {
   }
 }
 
+// === Wave A: Boss Phases ===
+// HP-threshold-triggered boss mechanics.
+// Phase shape on MOB_TYPES.phases[]: { atHpPct, effect, msg, ... }
+// Runtime on mob: phaseIndex (next phase to fire), phaseEffects[] (active timed effects)
+function updateBossPhases(mob, dt) {
+  const t = MOB_TYPES[mob.typeId];
+  if (!t.phases || !t.phases.length) return;
+  if (mob.phaseIndex == null) { mob.phaseIndex = 0; mob.phaseEffects = []; }
+  // trigger next phase if HP threshold reached
+  while (mob.phaseIndex < t.phases.length) {
+    const next = t.phases[mob.phaseIndex];
+    if (mob.hp / mob.maxHp > next.atHpPct) break;
+    bossEnterPhase(mob, next);
+    mob.phaseIndex++;
+  }
+  // tick active effects
+  if (mob.phaseEffects && mob.phaseEffects.length) {
+    for (const eff of mob.phaseEffects) eff.t += dt;
+    mob.phaseEffects = mob.phaseEffects.filter(e => e.t < e.life);
+  }
+}
+function bossEnterPhase(mob, phase) {
+  const t = MOB_TYPES[mob.typeId];
+  showBossPhaseBanner(t.name + ' — ' + phase.msg);
+  log(`★ ${t.name}: ${phase.msg}`, 'die');
+  triggerScreenShake(10);
+  sfx('crit');
+  // big particle burst at boss for visual punch
+  spawnParticleBurst(mob.px, mob.py, '#ff4040', 30);
+  applyBossPhaseEffect(mob, phase);
+}
+function applyBossPhaseEffect(mob, phase) {
+  if (phase.effect === 'enrage') {
+    mob.phaseEffects.push({
+      effect: 'enrage',
+      atkBoost: phase.atkBoost || 1.3,
+      t: 0,
+      life: phase.duration || 8000,
+    });
+  } else if (phase.effect === 'aoe_telegraph') {
+    // Reuse existing bossTelegraph system — telegraph at player's CURRENT position (dodgeable).
+    if (!game.bossTelegraphs) game.bossTelegraphs = [];
+    game.bossTelegraphs.push({
+      px: game.player.px, py: game.player.py,
+      radius: phase.radius || 96,
+      t: 0, total: phase.windup || 1500,
+      damage: phase.damage || 250,
+      elem: MOB_ELEMENT[mob.typeId] || 'neutral',
+    });
+  } else if (phase.effect === 'spawn_minions') {
+    const count = phase.count || 2;
+    const minionType = phase.minionType || 'lunatic';
+    if (!MOB_TYPES[minionType]) return;
+    const map = game.map;
+    const baseTx = Math.floor(mob.px / TILE);
+    const baseTy = Math.floor(mob.py / TILE);
+    let placed = 0;
+    for (let r = 1; r < 6 && placed < count; r++) {
+      for (let dy = -r; dy <= r && placed < count; dy++) {
+        for (let dx = -r; dx <= r && placed < count; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue; // ring only
+          const ttx = baseTx + dx, tty = baseTy + dy;
+          if (!isWalkable(map, ttx, tty)) continue;
+          const minion = makeMonster(minionType, ttx, tty);
+          minion._summoned = true;
+          game.mobs.push(minion);
+          spawnParticleBurst(minion.px, minion.py, '#a060ff', 14);
+          placed++;
+        }
+      }
+    }
+  }
+}
+function getBossEnrageMult(mob) {
+  if (!mob.phaseEffects) return 1;
+  let mult = 1;
+  for (const e of mob.phaseEffects) {
+    if (e.effect === 'enrage') mult *= (e.atkBoost || 1);
+  }
+  return mult;
+}
+function showBossPhaseBanner(text) {
+  const el = document.getElementById('boss-phase-banner');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove('show');
+  // restart animation
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(showBossPhaseBanner._t);
+  showBossPhaseBanner._t = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
 // === C1+C2+C3: NG+ / Hardcore / Daily ===
 function applyNgPlusScale(mob) {
   if (!game.player.ngPlusLevel) return;
@@ -7321,6 +7700,8 @@ function startNgPlus() {
   log(`★★ NG+ Level ${p.ngPlusLevel} เริ่มต้น!`, 'lvl');
   showToast(`NG+ ${p.ngPlusLevel}`);
   sfx('levelup');
+  // Wave B: prestige EP — completing story → starting NG+ run
+  if (typeof grantPrestigeEp === 'function') grantPrestigeEp(5, `เริ่ม NG+ ${p.ngPlusLevel}`);
   // Reset story progress (keep equipment + zeny + skills)
   p.questsCompleted = p.questsCompleted.filter(q => !q.startsWith('story_'));
   p.quests = {};
@@ -7350,6 +7731,8 @@ function checkDailyLogin() {
   showToast(`Daily Day ${streak}`);
   sfx('levelup');
   spawnParticleBurst(p.px, p.py, '#ffd870', 30);
+  // Wave B: prestige EP — first daily login per real day
+  if (typeof checkDailyPrestigeAward === 'function') checkDailyPrestigeAward();
 }
 
 // === D1: World Events ===
@@ -7967,6 +8350,15 @@ function nextTowerFloor() {
   }
   log(`★ Endless Tower — Floor ${newFloor}!`, 'lvl');
   showToast(`Floor ${newFloor}`);
+  // Wave B: prestige EP — every 10 floors cleared (only on first reach via highScore guard above)
+  if (newFloor % 10 === 0 && typeof grantPrestigeEp === 'function') {
+    const _g = loadPrestigeGlobal();
+    if ((_g.towerEpAt || 0) < newFloor) {
+      _g.towerEpAt = newFloor;
+      savePrestigeGlobal(_g);
+      grantPrestigeEp(1, `ผ่าน Tower Floor ${newFloor}`);
+    }
+  }
   // Re-generate floor mobs
   const rng = mulberry32((game.seed + 50000 + newFloor * 13) & 0x7fffffff);
   game.mapsTiles[4] = genMap(game.seed + 50000 + newFloor, 'tower');

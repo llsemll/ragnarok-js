@@ -255,6 +255,40 @@
   }
   #toast.show { opacity: 1; transform: translate(-50%, -100%); }
 
+  /* Wave A: Boss phase banner — top-center, big red text on phase trigger */
+  #boss-phase-banner {
+    position: absolute;
+    top: 18%; left: 50%;
+    transform: translate(-50%, -20px) scale(0.7);
+    font-size: 30px; font-weight: 800;
+    color: #ff4040;
+    letter-spacing: 2px;
+    text-shadow:
+      0 0 18px #ff2020,
+      0 0 6px #ff8080,
+      3px 3px 0 #200000,
+      -1px -1px 0 #200000;
+    pointer-events: none;
+    opacity: 0;
+    z-index: 105;
+    white-space: nowrap;
+    text-align: center;
+  }
+  #boss-phase-banner.show {
+    animation: boss-phase-banner-in 1.8s ease-out forwards;
+  }
+  @keyframes boss-phase-banner-in {
+    0%   { opacity: 0; transform: translate(-50%, -20px) scale(0.7); }
+    15%  { opacity: 1; transform: translate(-50%, 0)     scale(1.15); }
+    25%  { opacity: 1; transform: translate(-50%, 0)     scale(1.0); }
+    80%  { opacity: 1; transform: translate(-50%, 0)     scale(1.0); }
+    100% { opacity: 0; transform: translate(-50%, -10px) scale(0.95); }
+  }
+  @keyframes boss-enrage-flash {
+    0%, 100% { filter: brightness(1) saturate(1); }
+    50%      { filter: brightness(1.4) saturate(1.8) hue-rotate(-15deg); }
+  }
+
   /* Title screen */
   #title {
     position: absolute; inset: 0;
@@ -589,8 +623,109 @@
   /* Base z-index for all panels — sit above mobile-layer (40-44) */
   #panel-skills, #panel-shop, #panel-storage, #panel-quest, #panel-about,
   #panel-inventory, #panel-dialog, #panel-status,
-  #panel-settings, #panel-craft, #panel-card, #panel-achievements, #panel-saves {
+  #panel-settings, #panel-craft, #panel-card, #panel-achievements, #panel-saves,
+  #panel-prestige {
     z-index: 65;
+  }
+
+  /* ==================== WAVE B: PRESTIGE TREE ==================== */
+  #panel-prestige {
+    position: absolute;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 720px; max-width: 96vw;
+    max-height: 92vh;
+    background: linear-gradient(180deg, rgba(28,22,42,0.97), rgba(15,12,24,0.97));
+    border: 2px solid #6a4a90;
+    border-radius: 6px;
+    pointer-events: auto;
+    display: none;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(80,40,160,0.4);
+    overflow: hidden;
+  }
+  #panel-prestige.open { display: flex; }
+  #panel-prestige .pr-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 9px 14px;
+    background: linear-gradient(180deg, #3a2a55, #1f1530);
+    border-bottom: 1px solid #6a4a90;
+  }
+  #panel-prestige .pr-head h2 {
+    font-size: 14px; color: #d8a8ff;
+    text-shadow: 0 0 8px rgba(168,80,255,0.6);
+  }
+  #panel-prestige .pr-head .dlg-close {
+    cursor: pointer; color: #aaa; font-size: 20px; padding: 0 6px;
+  }
+  #panel-prestige .pr-head .dlg-close:hover { color: #fff; }
+  #panel-prestige .pr-body {
+    padding: 12px 14px;
+    overflow-y: auto;
+    flex: 1;
+    color: #ddd;
+    font-size: 12px;
+  }
+  .pr-summary {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: linear-gradient(180deg, rgba(80,40,140,0.35), rgba(40,20,70,0.35));
+    border: 1px solid #6a4a90;
+    border-radius: 4px;
+  }
+  .pr-summary > div { margin: 2px 0; }
+  .pr-ep-label { color: #d8a8ff; font-weight: 700; margin-right: 8px; }
+  .pr-ep-val   { color: #ffd870; font-size: 18px; font-weight: 800;
+                 text-shadow: 0 0 10px #ffaa00; }
+  .pr-hint     { color: #999; font-size: 10px; margin-top: 3px; }
+  .pr-group-title {
+    color: #d8a8ff; font-weight: 700; font-size: 12px;
+    margin: 14px 0 6px 0;
+    border-bottom: 1px solid #4a3060;
+    padding-bottom: 3px;
+  }
+  .pr-tree {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 8px;
+  }
+  .pr-node {
+    padding: 8px 10px;
+    background: #14171f;
+    border: 1px solid #3a3050;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s, border-color 0.1s;
+    user-select: none;
+  }
+  .pr-node:hover { transform: translateY(-1px); }
+  .pr-node.locked {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .pr-node.unlocked {
+    border-color: #a060ff;
+    box-shadow: 0 0 8px rgba(160,96,255,0.4);
+    animation: pr-pulse 1.6s ease-in-out infinite;
+  }
+  .pr-node.maxed {
+    border-color: #ffd870;
+    background: linear-gradient(180deg, rgba(80,60,20,0.4), rgba(40,30,10,0.4));
+    cursor: default;
+  }
+  .pr-node .pr-name { font-weight: 700; color: #fff; font-size: 12px; margin-bottom: 3px; }
+  .pr-node .pr-desc { color: #aaa; font-size: 10px; line-height: 1.4; }
+  .pr-node .pr-req  { color: #c87070; font-size: 9px; margin-top: 4px; }
+  .pr-node .pr-cost {
+    margin-top: 6px;
+    color: #ffd870;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .pr-node.maxed .pr-cost { color: #80c860; }
+  .pr-node.locked .pr-cost { color: #888; }
+  @keyframes pr-pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(160,96,255,0.35); }
+    50%      { box-shadow: 0 0 14px rgba(160,96,255,0.7); }
   }
 
   #panel-skills {
